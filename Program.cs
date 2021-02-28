@@ -3,17 +3,20 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Configuration;
-
 using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Specialized;
-
-
-
+using System.Xml;
+using System.Xml.Serialization;
 
 namespace twitchBot
 {
 
+    /// <summary>
+    /// Our main application
+    /// </summary>
     class Program
     {
         /// <summary>
@@ -29,6 +32,9 @@ namespace twitchBot
         static twitchBot.Logger logger;
         static twitchBot.Logger chatLog;
 
+
+        public static Dictionary<string, Viewer> Viewers;
+
         /// <summary>
         /// Main application thread
         /// It ends when any of the threads sets the "shouldEnd" shared variable to "true"
@@ -36,6 +42,10 @@ namespace twitchBot
         /// <param name="args"></param>
         static void Main(string[] args)
         {
+            Viewers = new Dictionary<string, Viewer>();
+
+            LoadViewers();
+            
             logger = new twitchBot.Logger();
             logger.Open();
             chatLog = new twitchBot.Logger("chat.log");
@@ -59,8 +69,84 @@ namespace twitchBot
             System.Environment.Exit(1);
         }
 
+        private static Viewer GetViewer(string name)
+        {
+            string[] nickParts = name.Split('!');
+            string nickName = nickParts.GetValue(0).ToString();
+            if (Viewers.ContainsKey(nickName))
+            {
+                return Viewers[nickName];
+            }
+            Viewer viewer = new Viewer
+            {
+                Name = nickName
+            };
+            Viewers.Add(nickName, viewer);
 
-      
+            SaveViewers();
+            return viewer;
+        }
+
+
+        /// <summary>
+        /// Save all viewers to an xml file
+        /// </summary>
+        public static void SaveViewers()
+        {
+            XmlDocument doc = new XmlDocument();
+
+            //(1) the xml declaration is recommended, but not mandatory
+            XmlDeclaration xmlDeclaration = doc.CreateXmlDeclaration("1.0", "UTF-8", null);
+            XmlElement root = doc.DocumentElement;
+            doc.InsertBefore(xmlDeclaration, root);
+
+            //(2) string.Empty makes cleaner code
+            XmlElement ViewersElement = doc.CreateElement(string.Empty, "viewers", string.Empty);
+            doc.AppendChild(ViewersElement);
+
+            foreach (KeyValuePair<string, Viewer> viewer in Viewers)
+            {
+                XmlElement viewerElemnt = doc.CreateElement(string.Empty, "Viewer", string.Empty);
+                ViewersElement.AppendChild(viewerElemnt);
+
+                XmlElement viewerName = doc.CreateElement(string.Empty, "Name", string.Empty);
+                XmlText viewerNameValue = doc.CreateTextNode(viewer.Value.Name);
+                viewerName.AppendChild(viewerNameValue);
+                viewerElemnt.AppendChild(viewerName);
+
+                XmlElement viewerPoints = doc.CreateElement(string.Empty, "Points", string.Empty);
+                XmlText viewerPointsValue = doc.CreateTextNode(viewer.Value.Points.ToString());
+                viewerPoints.AppendChild(viewerPointsValue);
+                viewerElemnt.AppendChild(viewerPoints);
+
+                
+
+            }
+
+            doc.Save("viewers.xml");
+        }
+
+
+        /// <summary>
+        /// Load all viewers from an xml file
+        /// </summary>
+        public static void LoadViewers()
+        {
+            // Create the XmlDocument.
+            XmlDocument doc = new XmlDocument();
+            doc.Load("viewers.xml");
+
+
+            foreach (XmlNode viewer in doc.DocumentElement.ChildNodes)
+            {
+                foreach (XmlNode viewerDetail in viewer)
+                {
+                    Console.WriteLine(viewerDetail.Name + ": " + viewerDetail.InnerText);
+                }
+            }
+        }
+
+
         /// <summary>
         /// Seven days to die client - should be running as a thread
         /// </summary>
@@ -243,10 +329,15 @@ namespace twitchBot
                                 Char[] separator = new char[] { ':' };
                                 string[] parts = data.Split(separator, 3);
 
-                                string[] nickParts = parts.GetValue(1).ToString().Split('!');
+                                
+
+                                Viewer viewer = GetViewer(parts.GetValue(1).ToString());
+                                string nickName = viewer.Name;
+
+
                                 string[] infoParts = parts.GetValue(0).ToString().Split(';');
 
-                                string nickName = nickParts.GetValue(0).ToString();
+                                
                                 char[] charsToTrim = { ' ', '\n', '\r' };
                                 string message = parts.GetValue(2).ToString().Trim(charsToTrim);
                                 Console.WriteLine(nickName + ": " + message);
@@ -254,7 +345,14 @@ namespace twitchBot
 
                                 if (message == "!spawn")
                                 {
-                                    SendToSevendays("spawnscouts mrpc");
+                                    ChatAfter("Χμμμ... ο " + nickName + " σου έστειλε μια screamer. Καλή τύχη!");
+                                    SendToSevendays("spawnscouts " + ConfigurationManager.AppSettings.Get("7daysNickname"));
+                                    SendToSevendays("say \"User " + nickName + " sent you a screamer\"");
+                                } else
+                                {
+                                    viewer.Points += 1;
+                                    SaveViewers();
+                                    SendToSevendays("say \"Twitch-" + nickName + ": " + message +"\"");
                                 }
 
                             }
@@ -311,6 +409,24 @@ namespace twitchBot
         public static void SendToTwitch(string data)
         {
             int bytesSent = twitchSocket.Send(Encoding.ASCII.GetBytes(data + "\n"));
+        }
+
+        /// <summary>
+        /// Say something to twitch after a specific or a random interval
+        /// </summary>
+        /// <param name="whatToSay"></param>
+        /// <param name="seconds"></param>
+        private static async void ChatAfter(string whatToSay, int seconds = -1)
+        {
+            if (seconds == -1)
+            {
+                Random rnd = new Random();
+                seconds = rnd.Next(1, 10);
+            }
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            string command = "PRIVMSG #" + ConfigurationManager.AppSettings.Get("twitchChannel") + " :" + whatToSay + "\n";
+            Console.WriteLine(command);
+            int bytesSent = twitchSocket.Send(Encoding.UTF8.GetBytes(command));
         }
 
 

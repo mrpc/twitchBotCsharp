@@ -71,6 +71,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="Viewer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App-Rename.config" />
