@@ -12,13 +12,20 @@ namespace twitchBot
 
         public Logger(string LogFile = "")
         {
+            string appPath = System.Reflection.Assembly.GetExecutingAssembly().CodeBase;
+
+            
+            //once you have the path you get the directory with:
+            string DirectoryPath = new Uri(System.IO.Path.GetDirectoryName(appPath)).LocalPath;
+
             if (LogFile == "")
             {
-                path = "d:\\Projects\\general.log";
+                path = DirectoryPath + "\\general.log";
             } else
             {
-                path = "d:\\Projects\\" + LogFile;
+                path = DirectoryPath + "\\" + LogFile;
             }
+            Console.WriteLine(path);
             if (!File.Exists(path))
             {
                 logFile = File.CreateText(path);
